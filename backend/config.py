@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import logging.config
 import tomllib
@@ -79,7 +80,11 @@ def setup_logging(settings: LoggingSettings) -> None:
                 },
                 "json": {
                     "()": structlog.stdlib.ProcessorFormatter,
-                    "processor": structlog.processors.JSONRenderer(),
+                    "processor": structlog.processors.JSONRenderer(
+                        serializer=lambda obj, **kwargs: json.dumps(
+                            obj, ensure_ascii=False, **kwargs
+                        )
+                    ),
                     "foreign_pre_chain": shared_processors,
                 },
             },

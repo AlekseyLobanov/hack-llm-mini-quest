@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from config import AppSettings, as_public_dict
+import json
+import logging
+
+from config import AppSettings, LoggingSettings, as_public_dict, setup_logging
 
 
 def test_app_settings_load_from_toml_and_masks_api_key(tmp_path) -> None:
@@ -30,3 +33,14 @@ password_words = [
     assert settings.llm.model == "test-model"
     assert settings.game.hard_mode_rotation_interval == 3
     assert public_data["llm"]["api_key"] == "***"
+
+
+def test_file_logs_write_unicode_without_ascii_escaping(tmp_path) -> None:
+    setup_logging(LoggingSettings(logs_dir=tmp_path, app_log_name="app.log"))
+
+    logging.getLogger().info("Привет")
+
+    log_text = (tmp_path / "app.log").read_text(encoding="utf-8")
+
+    assert "\\u041f" not in log_text
+    assert json.loads(log_text)["event"] == "Привет"
