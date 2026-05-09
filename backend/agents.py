@@ -371,6 +371,7 @@ class AgentService:
         )
 
     def _build_level_executors(self) -> dict[int, LevelExecutor]:
+        game = self.settings.game
         simple_agent = PromptAgent(self.chat_model)
         astronomy_agent = PromptAgent(
             self.chat_model, prompt_suffix=ASTRONOMY_PROMPT_SUFFIX
@@ -385,10 +386,7 @@ class AgentService:
                         FilterCheck(
                             self.filter_model,
                             check_kind="assistant_response",
-                            blocked_message=(
-                                "Фильтр сработал: ответ агента скрыт, потому что он "
-                                "может раскрывать секрет."
-                            ),
+                            blocked_message=game.level2_output_blocked_response_text,
                         ),
                     ),
                 ),
@@ -400,20 +398,14 @@ class AgentService:
                         FilterCheck(
                             self.filter_model,
                             check_kind="user_request",
-                            blocked_message=(
-                                "Фильтр сработал: запрос заблокирован, потому что он "
-                                "похож на попытку выманить секрет."
-                            ),
+                            blocked_message=game.level3_input_blocked_response_text,
                         ),
                     ),
                     output_checks=(
                         FilterCheck(
                             self.filter_model,
                             check_kind="assistant_response",
-                            blocked_message=(
-                                "Фильтр сработал: ответ скрыт, потому что он может "
-                                "содержать сведения о секрете."
-                            ),
+                            blocked_message=game.level3_output_blocked_response_text,
                         ),
                     ),
                 ),
@@ -425,21 +417,14 @@ class AgentService:
                         FilterCheck(
                             self.filter_model,
                             check_kind="user_request",
-                            blocked_message=(
-                                "Фильтр сработал: запрос отклонён на защищённом "
-                                "уровне, потому что он похож на попытку раскрыть "
-                                "секрет."
-                            ),
+                            blocked_message=game.level4_input_blocked_response_text,
                         ),
                     ),
                     output_checks=(
                         FilterCheck(
                             self.filter_model,
                             check_kind="assistant_response",
-                            blocked_message=(
-                                "Фильтр сработал: ответ скрыт на защищённом уровне, "
-                                "потому что он может помочь извлечь секрет."
-                            ),
+                            blocked_message=game.level4_output_blocked_response_text,
                         ),
                     ),
                 ),

@@ -45,7 +45,26 @@ def build_settings(rotation_interval: int = 5) -> AppSettings:
             },
             "game": {
                 "hard_mode_rotation_interval": rotation_interval,
-                "blocked_response_text": "Фильтр сработал. Ответ скрыт.",
+                "level2_output_blocked_response_text": (
+                    "Фильтр сработал: ответ агента скрыт, потому что он может "
+                    "раскрывать секрет."
+                ),
+                "level3_input_blocked_response_text": (
+                    "Фильтр сработал: запрос заблокирован, потому что он похож на "
+                    "попытку выманить секрет."
+                ),
+                "level3_output_blocked_response_text": (
+                    "Фильтр сработал: ответ скрыт, потому что он может содержать "
+                    "сведения о секрете."
+                ),
+                "level4_input_blocked_response_text": (
+                    "Фильтр сработал: запрос отклонён на защищённом уровне, "
+                    "потому что он похож на попытку раскрыть секрет."
+                ),
+                "level4_output_blocked_response_text": (
+                    "Фильтр сработал: ответ скрыт на защищённом уровне, потому "
+                    "что он может помочь извлечь секрет."
+                ),
                 "password_words": ["apple"] * 20,
             },
         }
@@ -127,7 +146,7 @@ def test_level3_blocks_on_input_before_agent_call() -> None:
 
     assert (
         result.response_text
-        == "Фильтр сработал: запрос заблокирован, потому что он похож"
+        == "Фильтр сработал: запрос заблокирован, потому что он похож "
         "на попытку выманить секрет."
     )
     assert result.filter_request is not None

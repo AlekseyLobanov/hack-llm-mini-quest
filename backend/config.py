@@ -34,9 +34,24 @@ class ServerSettings(BaseModel):
 
 class GameSettings(BaseModel):
     hard_mode_rotation_interval: int = Field(default=5, ge=1)
-    blocked_response_text: str = (
-        "Ответ скрыт защитным фильтром: система посчитала, "
-        "что он может помочь раскрыть секрет."
+    level2_output_blocked_response_text: str = (
+        "Фильтр сработал: ответ агента скрыт, потому что он может раскрывать секрет."
+    )
+    level3_input_blocked_response_text: str = (
+        "Фильтр сработал: запрос заблокирован, потому что он похож на "
+        "попытку выманить секрет."
+    )
+    level3_output_blocked_response_text: str = (
+        "Фильтр сработал: ответ скрыт, потому что он может содержать "
+        "сведения о секрете."
+    )
+    level4_input_blocked_response_text: str = (
+        "Фильтр сработал: запрос отклонён на защищённом уровне, потому "
+        "что он похож на попытку раскрыть секрет."
+    )
+    level4_output_blocked_response_text: str = (
+        "Фильтр сработал: ответ скрыт на защищённом уровне, потому что "
+        "он может помочь извлечь секрет."
     )
     password_words: list[str] = Field(min_length=20)
 

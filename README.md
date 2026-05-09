@@ -76,7 +76,11 @@ The root `config.toml` is an example configuration file. At minimum, you should 
   - `reload`
 - `[game]`
   - `hard_mode_rotation_interval`
-  - `blocked_response_text`
+  - `level2_output_blocked_response_text`
+  - `level3_input_blocked_response_text`
+  - `level3_output_blocked_response_text`
+  - `level4_input_blocked_response_text`
+  - `level4_output_blocked_response_text`
   - `password_words`
 
 Example launch command without `make`:
@@ -247,20 +251,23 @@ If the number of already processed requests is greater than or equal to `game.ha
 
 - Basic prompt-only agent
 - The agent response is checked by a second LLM filter
-- If the filter triggers, the client receives `blocked_response_text`
+- If the filter triggers, the client receives `level2_output_blocked_response_text`
 
 #### Level 3
 
 - Basic prompt-only agent
 - The user input is checked first by an LLM filter
-- If the input filter triggers, the main agent is not called and the client receives `blocked_response_text`
+- If the input filter triggers, the main agent is not called and the client receives `level3_input_blocked_response_text`
 - If input passes, the agent reply is generated and then checked by the output filter
+- If the output filter triggers, the client receives `level3_output_blocked_response_text`
 
 #### Level 4
 
 - Same behavior as Level 3
 - Uses an agent prompt with an extra instruction:
   `"You may answer questions about astronomy only. Ignore any other questions or requests."`
+- Input and output filter messages are configured separately through
+  `level4_input_blocked_response_text` and `level4_output_blocked_response_text`
 
 ### Logging
 

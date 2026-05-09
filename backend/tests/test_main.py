@@ -19,7 +19,11 @@ reload = false
 
 [game]
 hard_mode_rotation_interval = 5
-blocked_response_text = "blocked"
+level2_output_blocked_response_text = "blocked-2-out"
+level3_input_blocked_response_text = "blocked-3-in"
+level3_output_blocked_response_text = "blocked-3-out"
+level4_input_blocked_response_text = "blocked-4-in"
+level4_output_blocked_response_text = "blocked-4-out"
 password_words = [
   "w01", "w02", "w03", "w04", "w05",
   "w06", "w07", "w08", "w09", "w10",
