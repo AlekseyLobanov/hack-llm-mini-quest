@@ -4,6 +4,8 @@
 
 The player talks to one of four LLM-powered agents and tries to extract a hidden password. Each level adds more defensive behavior, so the app can be used to demo prompt-injection weaknesses, output filtering, input filtering, and session rotation in a simple, inspectable setup.
 
+![Site screenshot](doc/screen.png)
+
 ## Overview
 
 - Backend: `FastAPI`, in-memory sessions, level orchestration, logging, static file serving
