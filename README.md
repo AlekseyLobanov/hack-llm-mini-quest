@@ -295,6 +295,21 @@ The backend logs:
 
 This is intentional because the app is designed as a game/demo environment rather than a secure production system.
 
+For log analysis, the repository also includes `backend/log_report.py`.
+It reads the JSONL backend log and prints a session-oriented report to `stdout`:
+
+- one block per `session_id`
+- full request/response history for that session
+- filter results attached to each request
+- `guessed: yes` or `guessed: no` at the session level
+
+Example:
+
+```bash
+cd backend
+uv run python log_report.py logs/backend.log
+```
+
 ## Notes
 
 - `web-out/` is generated build output and should be rebuilt after frontend changes
