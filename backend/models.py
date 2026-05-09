@@ -45,3 +45,4 @@ class AgentResponse(BaseModel):
     level_id: int
     filter_request: Optional[FilterDecision] = None
     filter_response: Optional[FilterDecision] = None
+    filter_exchange: Optional[FilterDecision] = None

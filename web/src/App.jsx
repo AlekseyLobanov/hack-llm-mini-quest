@@ -2,7 +2,7 @@ import { startTransition, useEffect, useState } from "react";
 
 import { detectLanguage, getMessages, normalizeLanguage, t } from "./i18n";
 
-const LEVEL_FALLBACKS = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+const LEVEL_FALLBACKS = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
 const MAX_MESSAGE_LENGTH = 2000;
 const BLOCKED_PREFIXES = [
   "Ответ скрыт защитным фильтром",

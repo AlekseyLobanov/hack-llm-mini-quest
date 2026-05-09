@@ -14,7 +14,7 @@ const dictionaries = {
     },
     panel: {
       levelsTitle: "Scenario Select",
-      levelsTag: "4 scenarios",
+      levelsTag: "5 scenarios",
       responseTitle: "Agent Output",
       live: "live",
       ready: "ready",
@@ -39,6 +39,12 @@ const dictionaries = {
         title: "Level 4",
         badge: "Orbital Cage",
         description: "Level 3 with an extra astronomy-only prompt restriction on the main agent.",
+      },
+      5: {
+        title: "Level 5",
+        badge: "Double Blind",
+        description:
+          "Level 4 plus a final filter that judges the whole prompt-response pair for secret leakage.",
       },
     },
     session: {
@@ -107,7 +113,7 @@ const dictionaries = {
     },
     panel: {
       levelsTitle: "Выбор сценария",
-      levelsTag: "4 сценария",
+      levelsTag: "5 сценариев",
       responseTitle: "Ответ агента",
       live: "live",
       ready: "ready",
@@ -132,6 +138,12 @@ const dictionaries = {
         title: "Level 4",
         badge: "Orbital Cage",
         description: "Уровень 3 с дополнительным ограничением: основной агент отвечает только по астрономии.",
+      },
+      5: {
+        title: "Level 5",
+        badge: "Double Blind",
+        description:
+          "Уровень 4 с финальным фильтром, который оценивает всю пару запрос-ответ на утечку секрета.",
       },
     },
     session: {

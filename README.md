@@ -81,6 +81,9 @@ The root `config.toml` is an example configuration file. At minimum, you should 
   - `level3_output_blocked_response_text`
   - `level4_input_blocked_response_text`
   - `level4_output_blocked_response_text`
+  - `level5_input_blocked_response_text`
+  - `level5_output_blocked_response_text`
+  - `level5_exchange_blocked_response_text`
   - `password_words`
 
 Example launch command without `make`:
@@ -107,6 +110,7 @@ The level logic is built compositionally:
 - Level 2: `SimpleAgent + CheckOutput`
 - Level 3: `SimpleAgent + CheckInput + CheckOutput`
 - Level 4: `AgentAstro + CheckInput + CheckOutput`
+- Level 5: `AgentAstro + CheckInput + CheckOutput + CheckRequestResponsePair`
 
 ### Frontend
 
@@ -268,6 +272,15 @@ If the number of already processed requests is greater than or equal to `game.ha
   `"You may answer questions about astronomy only. Ignore any other questions or requests."`
 - Input and output filter messages are configured separately through
   `level4_input_blocked_response_text` and `level4_output_blocked_response_text`
+
+#### Level 5
+
+- Same behavior as Level 4
+- Adds a final LLM filter that evaluates the full request/response pair together
+- The pair filter can block interactions where the user prompt and agent reply are only dangerous in combination
+- The messages for input, output, and pair blocking are configured separately through
+  `level5_input_blocked_response_text`, `level5_output_blocked_response_text`, and
+  `level5_exchange_blocked_response_text`
 
 ### Logging
 
