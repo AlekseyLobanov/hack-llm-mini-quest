@@ -102,10 +102,14 @@ class ChatAgent(Protocol):
 
 
 class InputCheck(Protocol):
+    blocked_message: str
+
     def check(self, request: FilterRequest) -> FilterDecision: ...
 
 
 class OutputCheck(Protocol):
+    blocked_message: str
+
     def check(self, request: FilterRequest) -> FilterDecision: ...
 
 
@@ -132,9 +136,12 @@ class PromptAgent:
 
 
 class FilterCheck:
-    def __init__(self, model: FilterInvokable, check_kind: str) -> None:
+    def __init__(
+        self, model: FilterInvokable, check_kind: str, blocked_message: str
+    ) -> None:
         self.model = model
         self.check_kind = check_kind
+        self.blocked_message = blocked_message
 
     def check(self, request: FilterRequest) -> FilterDecision:
         result = self.model.invoke(
@@ -160,8 +167,7 @@ class FilterCheck:
 
 
 class LevelExecutor:
-    def __init__(self, blocked_response_text: str, pipeline: LevelPipeline) -> None:
-        self.blocked_response_text = blocked_response_text
+    def __init__(self, pipeline: LevelPipeline) -> None:
         self.pipeline = pipeline
 
     def run(self, user_text: str, password: str) -> PipelineResult:
@@ -177,7 +183,7 @@ class LevelExecutor:
             if decision.triggered:
                 request_filter = decision
                 return PipelineResult(
-                    response_text=self.blocked_response_text,
+                    response_text=check.blocked_message,
                     agent_reply=None,
                     filter_request=request_filter,
                 )
@@ -198,7 +204,7 @@ class LevelExecutor:
             if decision.triggered:
                 response_filter = decision
                 return PipelineResult(
-                    response_text=self.blocked_response_text,
+                    response_text=check.blocked_message,
                     agent_reply=reply,
                     filter_request=request_filter,
                     filter_response=response_filter,
@@ -365,40 +371,77 @@ class AgentService:
         )
 
     def _build_level_executors(self) -> dict[int, LevelExecutor]:
-        blocked = self.settings.game.blocked_response_text
         simple_agent = PromptAgent(self.chat_model)
         astronomy_agent = PromptAgent(
             self.chat_model, prompt_suffix=ASTRONOMY_PROMPT_SUFFIX
         )
-        input_check = FilterCheck(self.filter_model, check_kind="user_request")
-        output_check = FilterCheck(self.filter_model, check_kind="assistant_response")
 
         return {
-            1: LevelExecutor(
-                blocked_response_text=blocked,
-                pipeline=LevelPipeline(agent=simple_agent),
-            ),
+            1: LevelExecutor(pipeline=LevelPipeline(agent=simple_agent)),
             2: LevelExecutor(
-                blocked_response_text=blocked,
                 pipeline=LevelPipeline(
                     agent=simple_agent,
-                    output_checks=(output_check,),
+                    output_checks=(
+                        FilterCheck(
+                            self.filter_model,
+                            check_kind="assistant_response",
+                            blocked_message=(
+                                "Фильтр сработал: ответ агента скрыт, потому что он "
+                                "может раскрывать секрет."
+                            ),
+                        ),
+                    ),
                 ),
             ),
             3: LevelExecutor(
-                blocked_response_text=blocked,
                 pipeline=LevelPipeline(
                     agent=simple_agent,
-                    input_checks=(input_check,),
-                    output_checks=(output_check,),
+                    input_checks=(
+                        FilterCheck(
+                            self.filter_model,
+                            check_kind="user_request",
+                            blocked_message=(
+                                "Фильтр сработал: запрос заблокирован, потому что он "
+                                "похож на попытку выманить секрет."
+                            ),
+                        ),
+                    ),
+                    output_checks=(
+                        FilterCheck(
+                            self.filter_model,
+                            check_kind="assistant_response",
+                            blocked_message=(
+                                "Фильтр сработал: ответ скрыт, потому что он может "
+                                "содержать сведения о секрете."
+                            ),
+                        ),
+                    ),
                 ),
             ),
             4: LevelExecutor(
-                blocked_response_text=blocked,
                 pipeline=LevelPipeline(
                     agent=astronomy_agent,
-                    input_checks=(input_check,),
-                    output_checks=(output_check,),
+                    input_checks=(
+                        FilterCheck(
+                            self.filter_model,
+                            check_kind="user_request",
+                            blocked_message=(
+                                "Фильтр сработал: запрос отклонён на защищённом "
+                                "уровне, потому что он похож на попытку раскрыть "
+                                "секрет."
+                            ),
+                        ),
+                    ),
+                    output_checks=(
+                        FilterCheck(
+                            self.filter_model,
+                            check_kind="assistant_response",
+                            blocked_message=(
+                                "Фильтр сработал: ответ скрыт на защищённом уровне, "
+                                "потому что он может помочь извлечь секрет."
+                            ),
+                        ),
+                    ),
                 ),
             ),
         }
