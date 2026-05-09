@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass, field
+from typing import Protocol
 from uuid import UUID, uuid4
 
 import httpx
@@ -57,33 +59,232 @@ LEVELS = [
 ]
 
 
-class AgentService:
-    def __init__(self, settings: AppSettings) -> None:
-        self.settings = settings
-        self.sessions: dict[UUID, SessionState] = {}
-        timeout = settings.llm.timeout_seconds
-        self.http_client = httpx.Client(timeout=timeout, trust_env=False)
-        self.http_async_client = httpx.AsyncClient(timeout=timeout, trust_env=False)
-        self.chat_model = ChatOpenAI(
-            model=settings.llm.model,
-            api_key=settings.llm.api_key,
-            base_url=settings.llm.base_url,
-            temperature=settings.llm.temperature,
-            timeout=timeout,
-            http_client=self.http_client,
-            http_async_client=self.http_async_client,
+class Invokable(Protocol):
+    def invoke(self, messages: list[SystemMessage | HumanMessage]) -> object: ...
+
+
+class FilterInvokable(Protocol):
+    def invoke(
+        self, messages: list[SystemMessage | HumanMessage]
+    ) -> FilterDecision: ...
+
+
+@dataclass(frozen=True)
+class AgentRequest:
+    user_text: str
+    password: str
+
+
+@dataclass(frozen=True)
+class FilterRequest:
+    user_text: str
+    candidate_text: str
+
+
+@dataclass(frozen=True)
+class LevelPipeline:
+    agent: ChatAgent
+    input_checks: tuple[InputCheck, ...] = ()
+    output_checks: tuple[OutputCheck, ...] = ()
+
+
+@dataclass(frozen=True)
+class PipelineResult:
+    response_text: str
+    agent_reply: str | None = None
+    filter_request: FilterDecision | None = None
+    filter_response: FilterDecision | None = None
+
+
+class ChatAgent(Protocol):
+    def reply(self, request: AgentRequest) -> str: ...
+
+
+class InputCheck(Protocol):
+    def check(self, request: FilterRequest) -> FilterDecision: ...
+
+
+class OutputCheck(Protocol):
+    def check(self, request: FilterRequest) -> FilterDecision: ...
+
+
+class PromptAgent:
+    def __init__(self, model: Invokable, prompt_suffix: str = "") -> None:
+        self.model = model
+        self.prompt_suffix = prompt_suffix
+
+    def reply(self, request: AgentRequest) -> str:
+        system_prompt = BASE_SYSTEM_PROMPT.format(password=request.password)
+        if self.prompt_suffix:
+            system_prompt += self.prompt_suffix
+
+        response = self.model.invoke(
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=request.user_text),
+            ]
         )
-        self.filter_model = self.chat_model.with_structured_output(FilterDecision)
+        return str(getattr(response, "content", response))
+
+
+class FilterCheck:
+    def __init__(self, model: FilterInvokable, check_kind: str) -> None:
+        self.model = model
+        self.check_kind = check_kind
+
+    def check(self, request: FilterRequest) -> FilterDecision:
+        result = self.model.invoke(
+            [
+                SystemMessage(content=FILTER_PROMPT),
+                HumanMessage(
+                    content=(
+                        f"Тип проверки: {self.check_kind}\n"
+                        f"Сообщение пользователя:\n{request.user_text}\n\n"
+                        f"Проверяемый текст:\n{request.candidate_text}"
+                    )
+                ),
+            ]
+        )
+        LOGGER.info(
+            "filter_checked",
+            check_kind=self.check_kind,
+            triggered=result.triggered,
+            reason=result.reason,
+        )
+        return result
+
+
+class LevelExecutor:
+    def __init__(self, blocked_response_text: str, pipeline: LevelPipeline) -> None:
+        self.blocked_response_text = blocked_response_text
+        self.pipeline = pipeline
+
+    def run(self, user_text: str, password: str) -> PipelineResult:
+        request_filter: FilterDecision | None = None
+        for check in self.pipeline.input_checks:
+            decision = check.check(
+                FilterRequest(user_text=user_text, candidate_text=user_text)
+            )
+            if decision.triggered:
+                request_filter = decision
+                return PipelineResult(
+                    response_text=self.blocked_response_text,
+                    agent_reply=None,
+                    filter_request=request_filter,
+                )
+
+        reply = self.pipeline.agent.reply(
+            AgentRequest(user_text=user_text, password=password)
+        )
+
+        response_filter: FilterDecision | None = None
+        for check in self.pipeline.output_checks:
+            decision = check.check(
+                FilterRequest(user_text=user_text, candidate_text=reply)
+            )
+            if decision.triggered:
+                response_filter = decision
+                return PipelineResult(
+                    response_text=self.blocked_response_text,
+                    agent_reply=reply,
+                    filter_request=request_filter,
+                    filter_response=response_filter,
+                )
+
+        return PipelineResult(
+            response_text=reply,
+            agent_reply=reply,
+            filter_request=request_filter,
+            filter_response=response_filter,
+        )
+
+
+@dataclass
+class SessionStore:
+    password_words: list[str]
+    hard_mode_rotation_interval: int
+    sessions: dict[UUID, SessionState] = field(default_factory=dict)
+
+    def resolve(self, session_id: UUID, hard_mode: bool) -> tuple[SessionState, bool]:
+        existing = self.sessions.get(session_id)
+        if existing is None:
+            session = self.create(session_id)
+            return session, False
+
+        if hard_mode and existing.request_count >= self.hard_mode_rotation_interval:
+            new_session_id = uuid4()
+            session = self.create(new_session_id)
+            LOGGER.info(
+                "session_rotated",
+                old_session_id=str(session_id),
+                new_session_id=str(new_session_id),
+                hard_mode=True,
+            )
+            return session, True
+
+        return existing, False
+
+    def create(self, session_id: UUID) -> SessionState:
+        password = random.choice(self.password_words)
+        session = SessionState(session_id=session_id, password=password)
+        self.sessions[session_id] = session
+        LOGGER.info("session_created", session_id=str(session_id), password=password)
+        return session
+
+
+class AgentService:
+    def __init__(
+        self,
+        settings: AppSettings,
+        *,
+        chat_model: Invokable | None = None,
+        filter_model: FilterInvokable | None = None,
+    ) -> None:
+        self.settings = settings
+        self.http_client: httpx.Client | None = None
+        self.http_async_client: httpx.AsyncClient | None = None
+
+        if chat_model is None or filter_model is None:
+            timeout = settings.llm.timeout_seconds
+            self.http_client = httpx.Client(timeout=timeout, trust_env=False)
+            self.http_async_client = httpx.AsyncClient(timeout=timeout, trust_env=False)
+            base_model = ChatOpenAI(
+                model=settings.llm.model,
+                api_key=settings.llm.api_key,
+                base_url=settings.llm.base_url,
+                temperature=settings.llm.temperature,
+                timeout=timeout,
+                http_client=self.http_client,
+                http_async_client=self.http_async_client,
+            )
+            chat_model = base_model
+            filter_model = base_model.with_structured_output(FilterDecision)
+
+        self.chat_model = chat_model
+        self.filter_model = filter_model
+        self.session_store = SessionStore(
+            password_words=settings.game.password_words,
+            hard_mode_rotation_interval=settings.game.hard_mode_rotation_interval,
+        )
+        self.level_executors = self._build_level_executors()
 
     def list_levels(self) -> list[LevelInfo]:
         return LEVELS
 
+    @property
+    def sessions(self) -> dict[UUID, SessionState]:
+        return self.session_store.sessions
+
     def run_level(
         self, level_id: int, session_id: UUID, user_text: str, hard_mode: bool
     ) -> AgentResponse:
-        self._ensure_level(level_id)
-        session, rotated = self._resolve_session(
-            session_id=session_id, hard_mode=hard_mode
+        executor = self.level_executors.get(level_id)
+        if executor is None:
+            raise ValueError(f"Unknown level_id={level_id}")
+
+        session, rotated = self.session_store.resolve(
+            session_id=session_id,
+            hard_mode=hard_mode,
         )
         normalized_input = self._normalize_secret(user_text)
         success = normalized_input == self._normalize_secret(session.password)
@@ -114,150 +315,81 @@ class AgentService:
                 level_id=level_id,
             )
 
-        if level_id >= 3:
-            request_filter = self._filter_text(
-                check_kind="user_request",
-                user_text=user_text,
-                candidate_text=user_text,
-            )
-            if request_filter.triggered:
-                session.request_count += 1
-                LOGGER.warning(
-                    "request_blocked",
-                    level_id=level_id,
-                    session_id=str(session.session_id),
-                    reason=request_filter.reason,
-                )
-                return AgentResponse(
-                    session_id=session.session_id,
-                    response_text=self.settings.game.blocked_response_text,
-                    success=False,
-                    session_rotated=rotated,
-                    level_id=level_id,
-                    filter_request=request_filter,
-                )
-        else:
-            request_filter = None
-
-        agent_reply = self._ask_agent(
-            level_id=level_id, password=session.password, user_text=user_text
-        )
-
-        if level_id >= 2:
-            response_filter = self._filter_text(
-                check_kind="assistant_response",
-                user_text=user_text,
-                candidate_text=agent_reply,
-            )
-            if response_filter.triggered:
-                session.request_count += 1
-                LOGGER.warning(
-                    "response_blocked",
-                    level_id=level_id,
-                    session_id=str(session.session_id),
-                    reason=response_filter.reason,
-                    agent_reply=agent_reply,
-                )
-                return AgentResponse(
-                    session_id=session.session_id,
-                    response_text=self.settings.game.blocked_response_text,
-                    success=False,
-                    session_rotated=rotated,
-                    level_id=level_id,
-                    filter_request=request_filter,
-                    filter_response=response_filter,
-                )
-        else:
-            response_filter = None
-
+        result = executor.run(user_text=user_text, password=session.password)
         session.request_count += 1
-        LOGGER.info(
-            "outgoing_response",
-            level_id=level_id,
-            session_id=str(session.session_id),
-            agent_reply=agent_reply,
-        )
+
+        if result.filter_request and result.filter_request.triggered:
+            LOGGER.warning(
+                "request_blocked",
+                level_id=level_id,
+                session_id=str(session.session_id),
+                reason=result.filter_request.reason,
+            )
+        elif result.filter_response and result.filter_response.triggered:
+            LOGGER.warning(
+                "response_blocked",
+                level_id=level_id,
+                session_id=str(session.session_id),
+                reason=result.filter_response.reason,
+                agent_reply=result.agent_reply,
+            )
+        else:
+            LOGGER.info(
+                "outgoing_response",
+                level_id=level_id,
+                session_id=str(session.session_id),
+                agent_reply=result.response_text,
+            )
+
         return AgentResponse(
             session_id=session.session_id,
-            response_text=agent_reply,
+            response_text=result.response_text,
             success=False,
             session_rotated=rotated,
             level_id=level_id,
-            filter_request=request_filter,
-            filter_response=response_filter,
+            filter_request=result.filter_request,
+            filter_response=result.filter_response,
         )
 
-    def _ensure_level(self, level_id: int) -> None:
-        if not any(level.id == level_id for level in LEVELS):
-            raise ValueError(f"Unknown level_id={level_id}")
-
-    def _resolve_session(
-        self, session_id: UUID, hard_mode: bool
-    ) -> tuple[SessionState, bool]:
-        existing = self.sessions.get(session_id)
-        if existing is None:
-            session = self._create_session(session_id)
-            return session, False
-
-        if (
-            hard_mode
-            and existing.request_count >= self.settings.game.hard_mode_rotation_interval
-        ):
-            new_session_id = uuid4()
-            session = self._create_session(new_session_id)
-            LOGGER.info(
-                "session_rotated",
-                old_session_id=str(session_id),
-                new_session_id=str(new_session_id),
-                hard_mode=True,
-            )
-            return session, True
-
-        return existing, False
-
-    def _create_session(self, session_id: UUID) -> SessionState:
-        password = random.choice(self.settings.game.password_words)
-        session = SessionState(session_id=session_id, password=password)
-        self.sessions[session_id] = session
-        LOGGER.info("session_created", session_id=str(session_id), password=password)
-        return session
-
-    def _ask_agent(self, level_id: int, password: str, user_text: str) -> str:
-        system_prompt = BASE_SYSTEM_PROMPT.format(password=password)
-        if level_id == 4:
-            system_prompt += ASTRONOMY_PROMPT_SUFFIX
-
-        response = self.chat_model.invoke(
-            [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_text),
-            ]
+    def _build_level_executors(self) -> dict[int, LevelExecutor]:
+        blocked = self.settings.game.blocked_response_text
+        simple_agent = PromptAgent(self.chat_model)
+        astronomy_agent = PromptAgent(
+            self.chat_model, prompt_suffix=ASTRONOMY_PROMPT_SUFFIX
         )
-        return str(response.content)
+        input_check = FilterCheck(self.filter_model, check_kind="user_request")
+        output_check = FilterCheck(self.filter_model, check_kind="assistant_response")
 
-    def _filter_text(
-        self, check_kind: str, user_text: str, candidate_text: str
-    ) -> FilterDecision:
-        result = self.filter_model.invoke(
-            [
-                SystemMessage(content=FILTER_PROMPT),
-                HumanMessage(
-                    content=(
-                        f"Тип проверки: {check_kind}\n"
-                        f"Сообщение пользователя:\n{user_text}\n\n"
-                        f"Проверяемый текст:\n{candidate_text}"
-                    )
+        return {
+            1: LevelExecutor(
+                blocked_response_text=blocked,
+                pipeline=LevelPipeline(agent=simple_agent),
+            ),
+            2: LevelExecutor(
+                blocked_response_text=blocked,
+                pipeline=LevelPipeline(
+                    agent=simple_agent,
+                    output_checks=(output_check,),
                 ),
-            ]
-        )
-        LOGGER.info(
-            "filter_checked",
-            check_kind=check_kind,
-            triggered=result.triggered,
-            reason=result.reason,
-        )
-        return result
+            ),
+            3: LevelExecutor(
+                blocked_response_text=blocked,
+                pipeline=LevelPipeline(
+                    agent=simple_agent,
+                    input_checks=(input_check,),
+                    output_checks=(output_check,),
+                ),
+            ),
+            4: LevelExecutor(
+                blocked_response_text=blocked,
+                pipeline=LevelPipeline(
+                    agent=astronomy_agent,
+                    input_checks=(input_check,),
+                    output_checks=(output_check,),
+                ),
+            ),
+        }
 
     @staticmethod
-    def _normalize_secret(text: str) -> str:
-        return text.lower().strip()
+    def _normalize_secret(value: str) -> str:
+        return value.strip().lower()
