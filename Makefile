@@ -1,5 +1,5 @@
 run:
-	uv run backend/main.py --config config.toml
+	cd backend && uv run main.py --config ../config.toml
 
 web-install:
 	npm --prefix web install
