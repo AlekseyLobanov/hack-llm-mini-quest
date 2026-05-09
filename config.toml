@@ -1,0 +1,42 @@
+[llm]
+model = "gpt-4o-mini"
+api_key = "sk-lm-ssqG6j12:rJnzQYusJIpCVPtn23wC"
+base_url = "http://localhost:1234/v1"
+temperature = 0.0
+timeout_seconds = 30.0
+
+[logging]
+level = "INFO"
+logs_dir = "./logs"
+app_log_name = "backend.log"
+
+[server]
+host = "127.0.0.1"
+port = 8000
+reload = false
+
+[game]
+hard_mode_rotation_interval = 5
+blocked_response_text = "Ответ скрыт защитным фильтром: система посчитала, что он может помочь раскрыть секрет."
+password_words = [
+  "apple",
+  "bridge",
+  "cloud",
+  "dance",
+  "ember",
+  "forest",
+  "garden",
+  "harbor",
+  "island",
+  "jungle",
+  "kitten",
+  "lantern",
+  "meadow",
+  "napkin",
+  "orange",
+  "pencil",
+  "quartz",
+  "rocket",
+  "silver",
+  "thunder",
+]
