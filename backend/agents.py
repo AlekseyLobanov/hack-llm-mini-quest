@@ -79,6 +79,7 @@ class AgentRequest:
 class FilterRequest:
     user_text: str
     candidate_text: str
+    password: str
 
 
 @dataclass(frozen=True)
@@ -113,11 +114,14 @@ class PromptAgent:
         self.model = model
         self.prompt_suffix = prompt_suffix
 
-    def reply(self, request: AgentRequest) -> str:
-        system_prompt = BASE_SYSTEM_PROMPT.format(password=request.password)
+    def _build_system_prompt(self, password: str) -> str:
+        system_prompt = BASE_SYSTEM_PROMPT.format(password=password)
         if self.prompt_suffix:
             system_prompt += self.prompt_suffix
+        return system_prompt
 
+    def reply(self, request: AgentRequest) -> str:
+        system_prompt = self._build_system_prompt(request.password)
         response = self.model.invoke(
             [
                 SystemMessage(content=system_prompt),
@@ -139,6 +143,7 @@ class FilterCheck:
                 HumanMessage(
                     content=(
                         f"Тип проверки: {self.check_kind}\n"
+                        f"Секрет для проверки:\n{request.password}\n\n"
                         f"Сообщение пользователя:\n{request.user_text}\n\n"
                         f"Проверяемый текст:\n{request.candidate_text}"
                     )
@@ -163,7 +168,11 @@ class LevelExecutor:
         request_filter: FilterDecision | None = None
         for check in self.pipeline.input_checks:
             decision = check.check(
-                FilterRequest(user_text=user_text, candidate_text=user_text)
+                FilterRequest(
+                    user_text=user_text,
+                    candidate_text=user_text,
+                    password=password,
+                )
             )
             if decision.triggered:
                 request_filter = decision
@@ -180,7 +189,11 @@ class LevelExecutor:
         response_filter: FilterDecision | None = None
         for check in self.pipeline.output_checks:
             decision = check.check(
-                FilterRequest(user_text=user_text, candidate_text=reply)
+                FilterRequest(
+                    user_text=user_text,
+                    candidate_text=reply,
+                    password=password,
+                )
             )
             if decision.triggered:
                 response_filter = decision

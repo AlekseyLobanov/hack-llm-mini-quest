@@ -73,6 +73,7 @@ def test_level1_uses_simple_agent_without_filters() -> None:
     assert result.filter_request is None
     assert result.filter_response is None
     assert len(chat_model.invocations) == 1
+    assert "Твой пароль apple" in chat_model.invocations[0][0].content
     assert filter_model.invocations == []
 
 
@@ -100,6 +101,7 @@ def test_level2_blocks_response_when_output_check_triggers() -> None:
     assert result.filter_response.triggered is True
     assert len(chat_model.invocations) == 1
     assert len(filter_model.invocations) == 1
+    assert "Секрет для проверки:\napple" in filter_model.invocations[0][1].content
 
 
 def test_level3_blocks_on_input_before_agent_call() -> None:
@@ -155,7 +157,9 @@ def test_level4_uses_astronomy_agent_with_both_checks() -> None:
     assert ASTRONOMY_PROMPT_SUFFIX in system_prompt
     assert len(filter_model.invocations) == 2
     assert "Тип проверки: user_request" in filter_model.invocations[0][1].content
+    assert "Секрет для проверки:\napple" in filter_model.invocations[0][1].content
     assert "Тип проверки: assistant_response" in filter_model.invocations[1][1].content
+    assert "Секрет для проверки:\napple" in filter_model.invocations[1][1].content
 
 
 def test_hard_mode_rotates_session_and_uses_new_session_for_current_request() -> None:
